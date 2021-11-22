@@ -70,11 +70,11 @@ static void open_connection(krb5_context context, char *host, int *fd_out);
 static void kerberos_authenticate(krb5_context context,
                                   krb5_auth_context *auth_context, int fd,
                                   krb5_principal me, krb5_creds **new_creds);
-static int open_database(krb5_context context, char *data_fn, int *size);
+static int open_database(krb5_context context, char *data_fn, size_t *size);
 static void close_database(krb5_context context, int fd);
 static void xmit_database(krb5_context context,
                           krb5_auth_context auth_context, krb5_creds *my_creds,
-                          int fd, int database_fd, int in_database_size);
+                          int fd, int database_fd, size_t in_database_size);
 static void send_error(krb5_context context, krb5_creds *my_creds, int fd,
                        char *err_text, krb5_error_code err_code);
 static void update_last_prop_file(char *hostname, char *file_name);
@@ -89,7 +89,8 @@ static void usage()
 int
 main(int argc, char **argv)
 {
-    int fd, database_fd, database_size;
+    int fd, database_fd;
+    size_t database_size;
     krb5_error_code retval;
     krb5_context context;
     krb5_creds *my_creds;
@@ -331,7 +332,7 @@ kerberos_authenticate(krb5_context context, krb5_auth_context *auth_context,
  * in the size of the database file.
  */
 static int
-open_database(krb5_context context, char *data_fn, int *size)
+open_database(krb5_context context, char *data_fn, size_t *size)
 {
     struct stat stbuf, stbuf_ok;
     char *data_ok_fn;
@@ -405,19 +406,19 @@ close_database(krb5_context context, int fd)
 static void
 xmit_database(krb5_context context, krb5_auth_context auth_context,
               krb5_creds *my_creds, int fd, int database_fd,
-              int in_database_size)
+              size_t in_database_size)
 {
     krb5_int32 n;
     krb5_data inbuf, outbuf;
     char buf[KPROP_BUFSIZ];
     krb5_error_code retval;
     krb5_error *error;
-    krb5_ui_4 database_size = in_database_size, send_size, sent_size;
+    uint64_t database_size = (uint64_t) in_database_size, send_size, sent_size;
 
     /* Send over the size. */
-    send_size = htonl(database_size);
+    send_size = htonll(database_size);
     inbuf.data = (char *)&send_size;
-    inbuf.length = sizeof(send_size); /* must be 4, really */
+    inbuf.length = sizeof(send_size);
     /* KPROP_CKSUMTYPE */
     retval = krb5_mk_safe(context, auth_context, &inbuf, &outbuf, NULL);
     if (retval) {
@@ -452,7 +453,7 @@ xmit_database(krb5_context context, krb5_auth_context auth_context,
         retval = krb5_mk_priv(context, auth_context, &inbuf, &outbuf, NULL);
         if (retval) {
             snprintf(buf, sizeof(buf),
-                     "while encoding database block starting at %d",
+                     "while encoding database block starting at %lu",
                      sent_size);
             com_err(progname, retval, "%s", buf);
             send_error(context, my_creds, fd, buf, retval);
@@ -463,14 +464,14 @@ xmit_database(krb5_context context, krb5_auth_context auth_context,
         if (retval) {
             krb5_free_data_contents(context, &outbuf);
             com_err(progname, retval,
-                    _("while sending database block starting at %d"),
+                    _("while sending database block starting at %lu"),
                     sent_size);
             exit(1);
         }
         krb5_free_data_contents(context, &outbuf);
         sent_size += n;
         if (debug)
-            printf("%d bytes sent.\n", sent_size);
+            printf("%lu bytes sent.\n", sent_size);
     }
     if (sent_size != database_size) {
         com_err(progname, 0, _("Premature EOF found for database file!"));
@@ -526,9 +527,9 @@ xmit_database(krb5_context context, krb5_auth_context auth_context,
     }
 
     memcpy(&send_size, outbuf.data, sizeof(send_size));
-    send_size = ntohl(send_size);
+    send_size = ntohll(send_size);
     if (send_size != database_size) {
-        com_err(progname, 0, _("Kpropd sent database size %d, expecting %d"),
+        com_err(progname, 0, _("Kpropd sent database size %lu, expecting %lu"),
                 send_size, database_size);
         exit(1);
     }

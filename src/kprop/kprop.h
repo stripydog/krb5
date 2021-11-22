@@ -24,6 +24,16 @@
  * or implied warranty.
  */
 
+#include "k5-platform.h"
+
+#if !defined(htonll)
+#define htonll(x) k5_htonll(x)
+#endif
+
+#if !defined(ntohll)
+#define ntohll(x) k5_ntohll(x)
+#endif
+
 #define KPROP_SERVICE_NAME "host"
 #define TGT_SERVICE_NAME "krbtgt"
 #define KPROP_SERVICE "krb5_prop"
